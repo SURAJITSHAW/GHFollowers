@@ -10,21 +10,29 @@ import UIKit
 class FollowerListVC: UIViewController {
     
     var username: String!
-
+    
     override func viewDidLoad() {
         super.viewDidLoad()
-
+        
         view.backgroundColor = .systemBackground
         navigationController?.navigationBar.prefersLargeTitles = true
         
-        NetworkManager.shared.getFollowes(username: username, page: 1) { followers, errorMessage in
-            guard let followers = followers else {
-                self.showAlert(title: "Bad Request", message: errorMessage!.rawValue)
-                return
-            }
+        NetworkManager.shared.getFollowes(username: username, page: 1) { result in
+            //            guard let followers = followers else {
+            //                self.showAlert(title: "Bad Request", message: errorMessage!.rawValue)
+            //                return
+            //            }
+            //
+            //            print("No of followes: \(followers.count)")
+            //            print(followers)
             
-            print("No of followes: \(followers.count)")
-            print(followers)
+            switch result {
+            case .failure(let error):
+                self.showAlert(title: "Bad Request", message: error.rawValue)
+            case .success(let followers):
+                print("No of followes: \(followers.count)")
+                print(followers)
+            }
         }
     }
     
@@ -33,6 +41,6 @@ class FollowerListVC: UIViewController {
         
         navigationController?.isNavigationBarHidden = false
     }
-
-
+    
+    
 }
