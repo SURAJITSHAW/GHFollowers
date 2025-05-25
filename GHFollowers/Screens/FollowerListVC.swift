@@ -16,9 +16,14 @@ class FollowerListVC: UIViewController {
     
     
     var username: String!
-    var followes: [Follower] = [
-        
-    ]
+    var followers: [Follower] = []
+    
+    var currentPage = 1
+    var hasMoreFollowers = true
+    var isLoadingMoreFollowers = false
+
+    let spinner = UIActivityIndicatorView(style: .large)
+    private var spinnerOverlay: UIView?
     
     var collectionView: UICollectionView!
     var dataSource: UICollectionViewDiffableDataSource<Section, Follower>!
@@ -26,29 +31,18 @@ class FollowerListVC: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        print("Username: \(String(describing: username))")
+        
         view.backgroundColor = .systemBackground
         navigationController?.navigationBar.prefersLargeTitles = true
         
-        NetworkManager.shared.getFollowes(username: username, page: 1) { result in
-            //            guard let followers = followers else {
-            //                self.showAlert(title: "Bad Request", message: errorMessage!.rawValue)
-            //                return
-            //            }
-            //
-            //            print("No of followes: \(followers.count)")
-            //            print(followers)
-            
-            switch result {
-            case .failure(let error):
-                self.showAlert(title: "Bad Request", message: error.rawValue)
-            case .success(let followers):
-                self.followes = followers
-                self.updateData()
-            }
-        }
-        
+
         configureCollectionView()
         configureDataSource()
+        configureSpinner()
+        
+        
+        getFollowers(username: username, page: currentPage)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -57,8 +51,80 @@ class FollowerListVC: UIViewController {
         navigationController?.isNavigationBarHidden = false
     }
     
+    func configureSpinner() {
+        // Create full-screen overlay
+        let overlayView = UIView()
+        overlayView.translatesAutoresizingMaskIntoConstraints = false
+        overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.5) // Adjust alpha as needed
+        overlayView.alpha = 0 // Start hidden
+        overlayView.isUserInteractionEnabled = true // Blocks touches to underlying views
+        
+        // Configure spinner
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.color = .white // Stands out against dark overlay
+        spinner.hidesWhenStopped = true
+        
+        // Add to view hierarchy
+        overlayView.addSubview(spinner)
+        view.addSubview(overlayView)
+        view.bringSubviewToFront(overlayView)
+        
+        // Constraints (full screen)
+        NSLayoutConstraint.activate([
+            overlayView.topAnchor.constraint(equalTo: view.topAnchor),
+            overlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            spinner.centerXAnchor.constraint(equalTo: overlayView.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: overlayView.centerYAnchor)
+        ])
+        
+        // Store reference to overlay
+        self.spinnerOverlay = overlayView
+    }
+    
+    func getFollowers(username: String, page: Int) {
+        isLoadingMoreFollowers = true
+        // Fade in overlay and start spinner
+            UIView.animate(withDuration: 0.25) {
+                self.spinnerOverlay?.alpha = 1
+            }
+            spinner.startAnimating()
+
+
+        NetworkManager.shared.getFollowes(username: username, page: page) { [weak self] result in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                       // Fade out overlay and stop spinner
+                       UIView.animate(withDuration: 0.25) {
+                           self.spinnerOverlay?.alpha = 0
+                       } completion: { _ in
+                           self.spinner.stopAnimating()
+                       }
+                       self.isLoadingMoreFollowers = false
+                   }
+
+
+            switch result {
+            case .failure(let error):
+                self.showAlert(title: "Bad Request", message: error.rawValue)
+
+            case .success(let followers):
+                if followers.count < 30 {
+                    self.hasMoreFollowers = false
+                }
+                self.followers.append(contentsOf: followers)
+                self.updateData()
+            }
+        }
+    }
+
+    
     func configureCollectionView() {
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: createThreeColumnFlowLayout())
+        collectionView.delegate = self
         view.addSubview(collectionView)
                 collectionView.register(FollowerCell.self, forCellWithReuseIdentifier: FollowerCell.reuseID)
     }
@@ -90,9 +156,31 @@ class FollowerListVC: UIViewController {
         snapshot.appendSections([
             .main
         ])
-        snapshot.appendItems(followes)
+        snapshot.appendItems(followers)
         DispatchQueue.main.async{
             self.dataSource.apply(snapshot, animatingDifferences: true)
         }
     }
 }
+
+extension FollowerListVC: UICollectionViewDelegate {
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        let offsetY = scrollView.contentOffset.y
+        let contentHeight = scrollView.contentSize.height
+        let height = scrollView.frame.size.height
+        
+        print(offsetY, contentHeight, height)
+
+        if offsetY > contentHeight - (height * 2) {
+            
+            print("hasMoreFollowers: \(hasMoreFollowers), isLoadingMoreFollowers: \(isLoadingMoreFollowers)")
+
+            
+            guard hasMoreFollowers, !isLoadingMoreFollowers else { return }
+
+            currentPage += 1
+            getFollowers(username: username, page: currentPage)
+        }
+    }
+}
+

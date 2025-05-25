@@ -10,7 +10,7 @@ import UIKit
 struct NetworkManager {
     static let shared = NetworkManager()
     let baseUrl = "https://api.github.com/users/"
-    let perPage = 100
+    let perPage = 30
     
     private init() { }
     
@@ -42,6 +42,7 @@ struct NetworkManager {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let followers = try decoder.decode([Follower].self, from: data)
+                print("Fetched followers: \(followers.count)")
                 completion(.success(followers))
                 return
             } catch {
